@@ -29,6 +29,27 @@ trapinithart(void)
   w_stvec((uint64)kernelvec);
 }
 
+
+void lazyallocation(struct proc * p, uint64 va_fault){
+  // allocate a new page at va_fault
+  pagetable_t pagetable = p->pagetable;
+  uint64 a = PGROUNDDOWN(va_fault); // TODO: for those va that has been allocated
+  //printf("va_fault=%p, a=%p\n", va_fault, a);
+  char* mem = kalloc(); // allocate a new page of physical memory
+  if(mem == 0){
+      p->killed = 1;
+      exit(-1);
+  }
+
+  memset(mem, 0, PGSIZE);
+  if(mappages(pagetable, a, PGSIZE, (uint64)mem, PTE_W|PTE_X|PTE_R|PTE_U) != 0){
+      kfree(mem);
+      uvmdealloc(pagetable, a, a);
+      return;
+  }
+
+  return;
+}
 //
 // handle an interrupt, exception, or system call from user space.
 // called from trampoline.S
@@ -67,7 +88,31 @@ usertrap(void)
     syscall();
   } else if((which_dev = devintr()) != 0){
     // ok
-  } else {
+  }else if ( r_scause() == 13 || r_scause() == 15 ) {
+      if (r_stval() > p->sz || r_stval() > MAXVA){ // overflow
+        p->killed = 1;
+        exit(-1);
+      }
+      if (r_stval() < p->ustack){ // invalid page under user stack
+        p->killed = 1;
+        exit(-1);
+      }
+      lazyallocation(p, r_stval());
+      usertrapret(); 
+      return;
+  }else if ( r_scause() == 12 ){
+      if (r_stval() > p->sz || r_stval() > MAXVA){ // overflow
+        p->killed = 1;
+        exit(-1);
+      }
+      if (r_stval() < p->ustack){ // invalid page under user stack
+        p->killed = 1;
+        exit(-1);
+      }
+      lazyallocation(p, r_stval());
+      usertrapret(); 
+      return;
+  }else {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
     p->killed = 1;

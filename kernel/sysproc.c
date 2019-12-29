@@ -41,14 +41,17 @@ sys_wait(void)
 uint64
 sys_sbrk(void)
 {
-  int addr;
+  long addr;
   int n;
 
   if(argint(0, &n) < 0)
     return -1;
   addr = myproc()->sz;
-  if(growproc(n) < 0)
-    return -1;
+  if (n < 0){ // if n < 0, we need to use uvmdealloc to release those memory
+    if(growproc(n) < 0)
+      return -1;
+  }
+  myproc()->sz = addr + (long)n;
   return addr;
 }
 

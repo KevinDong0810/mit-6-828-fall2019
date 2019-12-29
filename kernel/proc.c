@@ -282,7 +282,7 @@ fork(void)
   pid = np->pid;
 
   np->state = RUNNABLE;
-
+  np->ustack = p->ustack;
   release(&np->lock);
 
   return pid;
