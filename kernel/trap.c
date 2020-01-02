@@ -43,6 +43,8 @@ usertrap(void)
 
   // send interrupts and exceptions to kerneltrap(),
   // since we're now in the kernel.
+  // if any further interrupts happen, we should call
+  // kernelvec to handle them
   w_stvec((uint64)kernelvec);
 
   struct proc *p = myproc();
@@ -77,8 +79,19 @@ usertrap(void)
     exit(-1);
 
   // give up the CPU if this is a timer interrupt.
-  if(which_dev == 2)
+  if(which_dev == 2){
+    p->ticks += 1;
+    if ( (p->ticks >= p->interval-1) && ( p->interval > 0 ) && (p->returned == 1) ){
+      p->ticks = 0;
+      p->returned = 0; // to be set to 1 in sigreturn()
+      // switch to handler
+      // save trampoline for register restoring in future
+      *(p->tf_backup) = *(p->tf);
+      p->tf->epc = p->handler;
+    }
     yield();
+  }
+    
 
   usertrapret();
 }

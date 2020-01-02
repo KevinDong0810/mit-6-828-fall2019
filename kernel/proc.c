@@ -122,6 +122,15 @@ found:
   memset(&p->context, 0, sizeof p->context);
   p->context.ra = (uint64)forkret;
   p->context.sp = p->kstack + PGSIZE;
+  p->interval = 0;
+  p->ticks = 0;
+  p->handler = 0;
+  p->returned = 1;
+
+  if((p->tf_backup = (struct trapframe *)kalloc()) == 0){
+    release(&p->lock);
+    return 0;
+  }
 
   return p;
 }
@@ -264,6 +273,12 @@ fork(void)
   np->sz = p->sz;
 
   np->parent = p;
+
+  // copy process clock
+  np->interval = p->interval;
+  np->ticks = p->ticks;
+  np->handler = p->handler;
+  np->returned = p -> returned;
 
   // copy saved user registers.
   *(np->tf) = *(p->tf);

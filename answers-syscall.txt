@@ -1,0 +1,18 @@
+Q. Which registers contain arguments to functions? For example, which register holds 13 in main's call to printf?
+A. a0 ~ a7; a2 stores the value of 13
+
+Q. Where is the function call to f from main? Where is the call to g? (Hint: the compiler may inline functions.)
+A. Both f and g are inline functions. In main, the compiler directly calculates the value of f(8) + 1 = 12, so it stores the value of 12 to a1;
+ The call to g in f is also transformed into ``addiw  a0, a0, 3``
+
+Q. At what address is the function printf located?
+A. critical instruction: 
+   auipc	ra,0x0  
+   jalr rd ra 0x620; jalr x0 ra 0x620
+   so printf is at pc + 0x620
+
+Q. What value is in the register ra just after the jalr to printf in main?
+A. ra = pc + 0x0 = pc
+
+
+   
