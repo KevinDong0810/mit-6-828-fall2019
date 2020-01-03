@@ -103,9 +103,12 @@ struct proc {
   struct context context;      // swtch() here to run process
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
-  int interval;        
-  int ticks;
-  int returned;                
-  uint64 handler;     
+  
+  // sigalarm changes here
+  int interval;                // time interval btw two alarms
+  int ticks;                   // passed ticks since last alarm
+  int returned;                // whether we have returned from sigalarm handler function
+  uint64 handler;              // address for the sigalarm handler function
+
   char name[16];               // Process name (debugging)
 };
