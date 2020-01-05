@@ -244,8 +244,10 @@ create(char *path, short type, short major, short minor)
   struct inode *ip, *dp;
   char name[DIRSIZ];
 
-  if((dp = nameiparent(path, name)) == 0)
+  if((dp = nameiparent(path, name)) == 0){
     return 0;
+  }
+    
 
   ilock(dp);
 
@@ -253,6 +255,8 @@ create(char *path, short type, short major, short minor)
     iunlockput(dp);
     ilock(ip);
     if(type == T_FILE && (ip->type == T_FILE || ip->type == T_DEVICE))
+      return ip;
+    if (type == T_SYMLINK && (ip->type == T_SYMLINK || ip->type == T_DEVICE))
       return ip;
     iunlockput(ip);
     return 0;
@@ -283,6 +287,46 @@ create(char *path, short type, short major, short minor)
   return ip;
 }
 
+char* retrieve_target(char* path, int level){
+  struct inode *ip;
+  //printf("finding path: %s\n", path);
+
+  if ( (ip = namei(path)) == 0){
+    // no file exists
+    //printf("non-exist file\n");
+    return (char*)0;
+  }
+  ilock(ip);
+  // whether the target path is another symbolic link
+  if (ip->type == T_SYMLINK){
+    level += 1;
+    if (level > 10){
+      //printf("cyclic symlinks\n");
+      iunlockput(ip);
+      return (char*)0; // approximate cyclic symbolic link issue
+    }
+    // extract target path
+    char target[MAXPATH];
+    int num;
+    if ( ( num = readi(ip, 0, (uint64)target, 0, sizeof(char)*(uint)MAXPATH)) == 0 ){
+      //printf("read fails: %d < %d\n", num, (int)(sizeof(char)*(uint)MAXPATH));
+      iunlockput(ip);
+      return 0; // read fails
+    }
+    //printf("source path: %s, target path: %s\n", path, target);
+    iunlockput(ip);
+    return retrieve_target(target, level);
+  }else{
+    //printf("final target: %s\n", path);
+    iunlockput(ip);
+    return path;
+  }
+
+  iunlockput(ip);
+  //printf("wired issue\n");
+  return (char*)0;
+}
+
 uint64
 sys_open(void)
 {
@@ -304,6 +348,17 @@ sys_open(void)
       return -1;
     }
   } else {
+    if (!(omode & O_NOFOLLOW)){
+      char* target;
+      // need to retrive target path recursively from the symbolic link file
+      if ( (target = retrieve_target(path, 0) ) == 0){
+        // cyclic symlinks or non-exist files
+        //printf("find target path fails\n");
+        end_op(ROOTDEV);
+        return -1;
+      }
+      strncpy(path, target, MAXPATH);
+    }
     if((ip = namei(path)) == 0){
       end_op(ROOTDEV);
       return -1;
@@ -345,6 +400,7 @@ sys_open(void)
   iunlock(ip);
   end_op(ROOTDEV);
 
+  //printf("finishes %s\n", path);
   return fd;
 }
 
@@ -480,6 +536,39 @@ sys_pipe(void)
     fileclose(wf);
     return -1;
   }
+  return 0;
+}
+
+uint64
+sys_symlink(void)
+{
+  char target[MAXPATH], path[MAXPATH];
+  struct inode * ip;
+  int len;
+
+  if ( argstr(0, target, MAXPATH) < 0 || argstr(1, path, MAXPATH) < 0 ){
+    return -1;
+  }
+
+  begin_op(ROOTDEV);
+  ip = create(path, T_SYMLINK, 0, 0);
+  if (ip == 0){
+    printf("creating inode fails\n");
+    end_op(ROOTDEV);
+    return -1;
+  }
+
+  // write target path to ip inode
+  len = strlen(target);
+  if(writei(ip, 0, (uint64)target, 0, sizeof(char) * (uint64)len) != sizeof(char) * (uint64)len){
+    printf("write target fails\n");
+    iunlockput(ip);
+    end_op(ROOTDEV);
+    return -1;
+  }
+
+  iunlockput(ip);
+  end_op(ROOTDEV);
   return 0;
 }
 
